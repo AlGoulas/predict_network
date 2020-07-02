@@ -98,6 +98,9 @@ def visualize_curve(x, y,
                     file_name=None, 
                     path_save=None):
     
+    sns.set(font_scale=1)
+    sns.set_style('white') 
+    
     fig, ax = plt.subplots()
     for current_x, current_y in zip(x,y):
         ax.plot(current_x, current_y,
@@ -158,7 +161,7 @@ def rand_forest_regr(X=None, Y=None, param_grid=None, cv=None):
     coeffs_folds_rfr = None
     all_folds_r2 = []
     all_folds_rf_depth = []
-    all_folds_rf_max_est = []
+    all_folds_rf_max_est = [] 
     
     print('\nRandom forest regression...')
     print('\nTest score (R2) across folds:')
@@ -216,14 +219,19 @@ def rand_forest_regr(X=None, Y=None, param_grid=None, cv=None):
 # Specify folder to store figures of resutls
 path_results = Path('/Users/alexandrosgoulas/Data/work-stuff/python-code/network_prediction/results')
 
+# Default seaborn visualization settings
+sns.set(font_scale=1)
+sns.set_style('white') 
+
 # Analyze the data
 # Load the pickled data
+print('\nLoading data...')
 name = 'data/net_data.pkl' 
 net_data = load_data(name)
 
 # Construct the dependent and independent variables from the desired dataset
 # dataset_name = 'macaque_monkey' 'Horvat_mouse' 'marmoset_monkey'
-dataset_name = 'marmoset_monkey'
+dataset_name = 'Horvat_mouse'
 X, Y = create_x_y(dataset_name = dataset_name, dataset = net_data)
 
 # Select observations for which for all features measurements exist (not nan)
@@ -237,12 +245,47 @@ Y = Y[idx_not_nan]
 Y_cont = Y.copy()
 Y[np.where(Y!=0)[0]] = 1.
 
-# Take into account the abs valeus of 2nd predictor (cytology)
+# Take into account the abs values of 2nd predictor (cytology)
 X = abs(X)
+
+#Feature names
+feature_names = ['dist', 'cyto']
+
+# Visualize histogram and correlations of predictors
+# Display histogram and correlation of predictors
+print('\nCalculating histograms and correlation of predictors...')
+df = pd.DataFrame(data=X, columns=feature_names)
+pd.plotting.scatter_matrix(df, figsize=(10, 10), marker='o',
+                           hist_kwds={'bins': 20}, s=60, alpha=.8)
+plt.suptitle('Predictor histograms and correlations')
+
+#Save fig
+file_name = dataset_name + '_pred_hist_corr' 
+file_name = file_name + '.svg'
+file_to_save= path_results / file_name
+plt.savefig(file_to_save, format='svg')
+
+# Plot histogram of the dependent variable (Y)
+print('\nCalculating histogram of dependent variable...')
+nr_exist = len(np.where(Y_cont!=0)[0]) 
+nr_absent = len(np.where(Y_cont==0)[0]) 
+
+fig = plt.figure()
+plt.hist(Y_cont)
+plt.xlabel('strength')
+plt.suptitle('Distribution of connection strength \n Existing: {0} ({1:.2f})% Absent: {2} ({3:.2f})%'.
+              format(nr_exist, (nr_exist/len(Y_cont))*100, nr_absent, (nr_absent/len(Y_cont))*100),
+              fontsize=12
+            )
+
+#Save fig
+file_name = dataset_name + '_Y_hist' 
+file_name = file_name + '.svg'
+file_to_save= path_results / file_name
+plt.savefig(file_to_save, format='svg')
 
 # Which features to use - calculate all possible combinations given the feat nr
 feature_idx = [0, 1]
-feature_names = ['dist', 'cyto']
 all_combos = []
 for l in range(1, len(feature_idx)+1):
     a = list(itertools.combinations(feature_idx, l))
@@ -262,7 +305,8 @@ for c in all_combos:
     title_names=''
     for n in c:
         title_names = title_names + ' ' + feature_names[n]
-    
+        
+    print('\nLogistic regression with predictor(s):' + title_names + '...')
     (all_auc, all_ap,
      all_tpr, all_fpr, all_prec, all_recall) = cv_logistic_regr(X = X[:, c], 
                                                                 Y = Y, 
@@ -274,7 +318,7 @@ for c in all_combos:
     
     # Visualize
     # ROC
-    file_name = dataset_name + '_ROC'
+    file_name = dataset_name + '_ROC_' + title_names
     
     visualize_curve(all_fpr, all_tpr,
                     metrics=all_auc,
@@ -285,7 +329,7 @@ for c in all_combos:
                     file_name = file_name, path_save = path_results)  
     
     # Precision-recall
-    file_name = dataset_name + 'Precision-Recall'
+    file_name = dataset_name + '_Precision-Recall_' + title_names
     
     visualize_curve(all_recall, all_prec,
                 metrics=all_ap,
@@ -337,71 +381,75 @@ visualize_data_frame(df=df, filters=None,
                     )  
   
 # Perform rfr on the weights of connections
-param_grid = {
-             'n_estimators': [10, 40, 120, 160, 200],
-             'max_depth': [None, 2, 4, 6, 8]
-             }        
-
-idx = np.where(Y_cont!=0)[0]
-Y_cont = Y_cont[idx] 
-X = X[idx, :]
-
-# Monte Carlo CV - toned down since we do a grid search as well.
-cv = ShuffleSplit(n_splits=2, test_size=.3)
-
-#rfr
-(all_folds_actual,
- all_folds_pred,
- coeffs_folds_rfr,
- all_folds_r2) = rand_forest_regr(X=X, 
-                                  Y=np.log(Y_cont), # logarithm improves stability of predictions and hyperparams
-                                  param_grid=param_grid, 
-                                  cv=cv)   
-                                  
-# Plot the performance (r2) across folds as a boxplot
-values = all_folds_r2
-for_data_frame['values'] = values 
-for_data_frame['grouping'] = len(values)*['']  
- 
-df = pd.DataFrame(for_data_frame) 
-file_name = dataset_name + '_r2_testset_rfr'
-
-visualize_data_frame(df=df, filters=None, 
-                     xlabel='R2 on test set across folds', ylabel='R2',
-                     file_name = file_name, path_save = path_results,
-                     palette = sns.color_palette('mako_r', 3)
-                    ) 
- 
-# Plot the importance of features across folds                           
-# Stack the feature importance values for visualization with the boxplot
-# each column in coeffs_folds_rfr is a feature  and rows in coeffs_folds_rfr
-# are folds
-values = None
-categories = []
-for i in range(coeffs_folds_rfr.shape[1]):
-    categories.extend(len(coeffs_folds_rfr[:, i])*[feature_names[i]])
-    if values is None:
-        values = coeffs_folds_rfr[:, i]
-    else:
-        values = np.hstack((values, 
-                            coeffs_folds_rfr[:, i])
-                           )
-
-for_data_frame['values'] = values 
-for_data_frame['grouping'] = categories
- 
-df = pd.DataFrame(for_data_frame) 
-file_name = dataset_name + '_feature_importance_rfr'
-
-visualize_data_frame(df=df, filters=None, 
-                     xlabel='feature importance across folds', ylabel='R2',
-                     file_name = file_name, path_save = path_results,
-                     palette = sns.color_palette('mako_r', 3)
-                    )         
-        
-        
-            
-        
+# Certain data sets have binary dependent variables, hence this option is 
+# not available. Thus, check what data set we analyze
+if dataset_name in ['marmoset_monkey','macaque_monkey']:
+    param_grid = {
+                 'n_estimators': [10, 40, 120, 160, 200],
+                 'max_depth': [None, 2, 4, 6, 8]
+                 }        
     
-                                  
-                                  
+    idx = np.where(Y_cont!=0)[0]
+    Y_cont = Y_cont[idx] 
+    X = X[idx, :]
+    
+    # Monte Carlo CV - toned down since we do a grid search as well.
+    cv = ShuffleSplit(n_splits=2, test_size=.3)
+    
+    #rfr
+    (all_folds_actual,
+     all_folds_pred,
+     coeffs_folds_rfr,
+     all_folds_r2) = rand_forest_regr(X=X, 
+                                      Y=np.log(Y_cont), # log improves stability of predictions and hyperparams across folds
+                                      param_grid=param_grid, 
+                                      cv=cv)   
+                                      
+    # Plot the performance (r2) across folds as a boxplot
+    values = all_folds_r2
+    for_data_frame['values'] = values 
+    for_data_frame['grouping'] = len(values)*['']  
+     
+    df = pd.DataFrame(for_data_frame) 
+    file_name = dataset_name + '_r2_testset_rfr'
+    
+    visualize_data_frame(df=df, filters=None, 
+                         xlabel='R2 on test set across folds', ylabel='R2',
+                         file_name = file_name, path_save = path_results,
+                         palette = sns.color_palette('mako_r', 3)
+                        ) 
+     
+    # Plot the importance of features across folds                           
+    # Stack the feature importance values for visualization with the boxplot
+    # each column in coeffs_folds_rfr is a feature  and rows in coeffs_folds_rfr
+    # are folds
+    values = None
+    categories = []
+    
+    if len(coeffs_folds_rfr.shape) == 1:
+        iterations=1
+        values=coeffs_folds_rfr[:]
+        categories=feature_names
+    else:
+        iterations=coeffs_folds_rfr.shape[1]
+        for i in range(iterations):
+            categories.extend(coeffs_folds_rfr.shape[0]*[feature_names[i]])
+            if values is None:
+                values = coeffs_folds_rfr[:, i]
+            else:
+                values = np.hstack((values, 
+                                    coeffs_folds_rfr[:, i])
+                                   )
+    
+    for_data_frame['values'] = values 
+    for_data_frame['grouping'] = categories
+     
+    df = pd.DataFrame(for_data_frame) 
+    file_name = dataset_name + '_feature_importance_rfr'
+    
+    visualize_data_frame(df=df, filters=None, 
+                         xlabel='feature importance across folds', ylabel='R2',
+                         file_name = file_name, path_save = path_results,
+                         palette = sns.color_palette('mako_r', 3)
+                        )         
+        
