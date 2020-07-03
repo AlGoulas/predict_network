@@ -16,12 +16,59 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.inspection import permutation_importance
 from sklearn.model_selection import GridSearchCV
 
+# Load dataset using pickle
 def load_data(name):
+    '''
+    Input
+    -----
+    name: string specifying the path to the .pkl file to load 
+       
+    Output
+    ------
+    data: The loaded pickled dataset. The default dataset coming with this repo
+        (data/net_data.pkl) is a list of dictionaries summarizing brain 
+        nertwork data.
+        Each dictionary contains the following keys and values:
+        'C' : C a 2D NxN numpy array representing the connections
+        between the N areas. C[i,j] is denoting the connection from
+        area i to area j. 0=connection not exisiting. Values different from 0
+        can be continous, and in this case they reflect the strenght of the
+        connection, or binary, that is, 1 denoting the presence of conenctions.
+        'Dist' : Dist a 2D NxN numpy array representing the physical
+        distances between the N areas (in mm). Dist[i,j] is denoting the 
+        physical distance from area i to area j.
+        'Delta' : Delta a 2D NxN numpy array representing the 
+        similarity of areas in terms of their cytological composition. 
+        This can be categorical or continous. Delta[i,j] is denoting the 
+        difference of area i from area j in terms of their cytological status
+        'Names' : Names a list of strings denoting the names of the N brain 
+        areas.
+        'dataset' : data_set_name string denoting the name of the dataset.
+        See the following publications for a thorough description of the data:
+        Goulas A, Majka P, Rosa MGP, Hilgetag CC (2019)
+        PLoS Biol 17(3): e2005346. 
+        https://doi.org/10.1371/journal.pbio.2005346  
+    '''
     with open(name, 'rb') as fp:
         data = pickle.load(fp)
     return data    
  
+# Create dependent (Y) and independent variables (X)    
 def create_x_y(dataset_name=None, dataset=None):
+    '''
+    Input
+    -----
+    dataset_name, string {'macaque_monkey' 'Horvat_mouse' 'marmoset_monkey'} 
+        specifying which aspect fo the data set will be used
+    dataset, a list of dictionaries returned from the load_data function 
+    
+    Output
+    ------
+    X, a 2D NxM numpy array  where N is Dist.dim-len(diag(Dist)) and M=2.
+        Thus X contains 2 predictors and Dist.dim-len(diag(Dist)) observations.
+    Y, a 1D numpy array containing the connections status (absent=0, present=1
+       or continous variable) for Dist.dim-len(diag(Dist)) observations.      
+    '''
     for ds in dataset:
         if ds['dataset'] == dataset_name: #dataset name is the desired one?
             C = ds['C']         #network matrix
@@ -33,9 +80,33 @@ def create_x_y(dataset_name=None, dataset=None):
     X = X.T
     
     return X, Y
-    
+
+# Use cross validation to perform logistic regression based predictions    
 def cv_logistic_regr(X=None, Y=None,
                      cv=None, scaler=None):
+    '''
+    Input
+    -----
+    X, a 2D NxM numpy array where M are the feaatures/predictors and N the 
+        observations. Function create_x_y can be used for returning X
+    Y, a 1D numpy array with N observations   
+    cv, a cross validation iterator (see scikit-learn for full documentation)
+    scaler, a scaler that transform features by scaling each feature to a 
+        given range (see scikit-learn for full documentation).
+        
+    Output
+    ------
+    all_auc, list with len=nr of fold (specified in the cv) keeping the 
+        area under curve of the ROC curve computed as each fold
+    all_ap, same as above but keeping the average precision scores
+    all_tpr, a list of len len=nr of fold (specified in the cv) of numpy arrays 
+        keeping the true positive rates for each fold. The shape of the numpy
+        array is determined by the threshods used for computing the tpr
+        (see roc_curve from scikit-learn)
+    all_fpr, same as above but for the false positive rate
+    all_prec, same as above but for precision
+    all_recall same as above but for recall 
+    '''
     # Logistic regression
     log_regr = LogisticRegression(max_iter=1000)
     
@@ -46,7 +117,8 @@ def cv_logistic_regr(X=None, Y=None,
     all_prec = []
     all_recall = []
     all_ap = []
-        
+    
+    # Run the cross validation following the strategy specific by cv    
     for i, (train, test) in enumerate(cv.split(X, Y)):
         
         X_train, Y_train = X[train, :], Y[train]
@@ -83,12 +155,14 @@ def cv_logistic_regr(X=None, Y=None,
                                              scores[:, 1], 
                                              pos_label=1)
        
+        # Keep precision, recall and average precision
         all_prec.append(precision)
         all_recall.append(recall)
         all_ap.append(ap)
     
     return all_auc, all_ap, all_tpr, all_fpr, all_prec, all_recall
-  
+
+# Visualize curves with seaborn (ROC or precision recall)     
 def visualize_curve(x, y, 
                     metrics=None,
                     metric_name=None,
@@ -97,7 +171,24 @@ def visualize_curve(x, y,
                     title=None,
                     file_name=None, 
                     path_save=None):
-    
+    '''
+    Input
+    -----
+    x, a list of numpy arrays denoting the value along the x axis for plotting 
+        the curve (e.g., fpr)
+    y, same as above but for the y axis
+        Note: a seperate curve will be plotted for each item/numpy array in the 
+        list. Thus, total nr of curves=len(x)=len(y)  
+    metric_name, string denoting the name of the metric that the curves 
+        represent (e.g., ROC, Precision-recall)
+    x_label, string denoting the label for the x axis
+    y_label, same as above but for the y axis
+    title, same as above but for the title of the figure
+    file_name, string denoting the name of the file of the saved figure 
+        (default=None, no file is saved)
+    path_save, string denoting the name of the folder path of the saved figure 
+        (default=None, no file is saved)     
+    '''  
     sns.set(font_scale=1)
     sns.set_style('white') 
     
@@ -118,11 +209,34 @@ def visualize_curve(x, y,
         file_to_save= path_save / file_name
         plt.savefig(file_to_save, format='svg')    
 
+# Visualize boxplot with seaborn
 def visualize_data_frame(df=None, filters=None,
                          xlabel=None, ylabel=None,
                          file_name=None, path_save=None,
                          palette=None
                          ):
+    '''
+    Input
+    -----
+    df, dataframe of the data to be plotted as a boxplot (seaborn documentation)
+    filter, dict with keys that corresponding to the categorical values of the 
+        dataframe and values correspoding to the valeus that should be 
+        retained in the dataframe.
+        Example: If prior to the use of this visualization function
+        this filter is used and passed as an argument 
+        filters = {
+          'grouping': 'cyto'
+          }
+        the only information linked to the grouping variable 'cyto' will
+        be visualized
+    x_label, string denoting the label for the x axis
+    y_label, same as above but for the y axis
+    file_name, string denoting the name of the file of the saved figure 
+        (default=None, no file is saved)
+    path_save, string denoting the name of the folder path of the saved figure 
+        (default=None, no file is saved)     
+    palette, palette name, list, or dict, optional (see seaborn documentation)    
+    '''  
     
     # reduce the dataframe by keeping only the rows with the column
     # values specified in filters
@@ -150,9 +264,34 @@ def visualize_data_frame(df=None, filters=None,
         file_name = file_name + '.svg'
         file_to_save= path_save / file_name
         plt.savefig(file_to_save, format='svg')
-   
+ 
+# Perform random forest regression    
 def rand_forest_regr(X=None, Y=None, param_grid=None, cv=None):
+    '''
+    Input
+    -----
+    X, a 2D NxM numpy array where M are the feaatures/predictors and N the 
+        observations. Function create_x_y can be used for returning X
+    Y, a 1D numpy array with N observations 
+    param_grid, a dictionary specifying the grid of parameters for grid search
+        (see scikit-learn for full documentation)
+    cv, a cross validation iterator (see scikit-learn for full documentation)
+    scaler, a scaler that transform features by scaling each feature to a 
+        given range (see scikit-learn for full documentation).
     
+    Output
+    ------
+    all_folds_actual, a list of numpy arrays corresponding to the Y_test values.
+        The len of the list corresponds to the nr of folds.
+    all_folds_pred, a list of numpy arrays corresponding to the Y_pred values.
+        The len of the list corresponds to the nr of folds.
+    coeffs_folds_rfr, a 2D array (nr of folds>1) of KxM size with K=nr of folds 
+        and M=number of features. Each columns corresponds to the permutation 
+        importance for each feature across folds. Note that permutation 
+        importance is computed on the test set.
+    all_folds_r2, a list with the r2 estimated between Y_test and Y_pred.
+        The list has len=nr of folds. 
+    '''
     # Keep predictions
     all_folds_pred = []
     all_folds_actual = []
@@ -231,7 +370,8 @@ net_data = load_data(name)
 
 # Construct the dependent and independent variables from the desired dataset
 # dataset_name = 'macaque_monkey' 'Horvat_mouse' 'marmoset_monkey'
-dataset_name = 'Horvat_mouse'
+dataset_name = 'macaque_monkey'
+print('\nCreating depeendent and independent variables for dataset...' + dataset_name)
 X, Y = create_x_y(dataset_name = dataset_name, dataset = net_data)
 
 # Select observations for which for all features measurements exist (not nan)
@@ -293,7 +433,7 @@ for l in range(1, len(feature_idx)+1):
         all_combos.append(list(item))
 
 # Monte Carlo CV
-cv = ShuffleSplit(n_splits=100, test_size=.3)
+cv = ShuffleSplit(n_splits=10, test_size=.3)
 
 # Max Min scaler
 scaler = MinMaxScaler()
@@ -373,7 +513,7 @@ for_data_frame['values'] = values
  
 df = pd.DataFrame(for_data_frame) 
 file_name = dataset_name + '_AP_predictor_combo_logistic'
-
+    
 visualize_data_frame(df=df, filters=None, 
                      xlabel='predictors', ylabel='AP',
                      file_name = file_name, path_save = path_results,
@@ -446,7 +586,7 @@ if dataset_name in ['marmoset_monkey','macaque_monkey']:
      
     df = pd.DataFrame(for_data_frame) 
     file_name = dataset_name + '_feature_importance_rfr'
-    
+
     visualize_data_frame(df=df, filters=None, 
                          xlabel='feature importance across folds', ylabel='R2',
                          file_name = file_name, path_save = path_results,
