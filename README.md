@@ -25,5 +25,5 @@ Note that the relative path to the dataset is specified correspondign to the pat
 
 # Data
 
-The data are freely available from the following publication and the references publications and repositoires therein:
+The data are freely available from the following publication and the references publications and repositories therein:
 Goulas A, Majka P, Rosa MGP, Hilgetag CC (2019) A blueprint of mammalian cortical connectomes. PLoS Biol 17(3): e2005346. https://doi.org/10.1371/journal.pbio.2005346
