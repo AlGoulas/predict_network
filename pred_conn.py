@@ -371,7 +371,7 @@ net_data = load_data(name)
 # Construct the dependent and independent variables from the desired dataset
 # dataset_name = 'macaque_monkey' 'Horvat_mouse' 'marmoset_monkey'
 dataset_name = 'macaque_monkey'
-print('\nCreating depeendent and independent variables for dataset...' + dataset_name)
+print('\nCreating dependent and independent variables for dataset...' + dataset_name)
 X, Y = create_x_y(dataset_name = dataset_name, dataset = net_data)
 
 # Select observations for which for all features measurements exist (not nan)
