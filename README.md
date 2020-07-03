@@ -1,5 +1,6 @@
-# predict_network
+# Predictive model of missing networks data
 Predict missing connections in networks
+![net_pred_model](net_pred_model.png)
 
 # Description
 The code builds predictive models that can estimate the existence and strength of edges in networks based on attributes of the nodes. Thus, predictions can be made for missing data, that is, connections, between pairs of nodes. In other words, the models predict the existence and significance (presence and strength) of interactions between objects, represented as edges and nodes, respectively.
