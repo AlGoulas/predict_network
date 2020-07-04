@@ -291,6 +291,10 @@ def rand_forest_regr(X=None, Y=None, param_grid=None, cv=None):
         importance is computed on the test set.
     all_folds_r2, a list with the r2 estimated between Y_test and Y_pred.
         The list has len=nr of folds. 
+    
+    NOTE: If a tranformed dependent variable is passed as an argument Y,
+          then the reported printed r2 at each fold corresponds to the r2
+          computed on the transformed Y_test and Y_pred. 
     '''
     # Keep predictions
     all_folds_pred = []
@@ -370,7 +374,7 @@ net_data = load_data(name)
 
 # Construct the dependent and independent variables from the desired dataset
 # dataset_name = 'macaque_monkey' 'Horvat_mouse' 'marmoset_monkey'
-dataset_name = 'macaque_monkey'
+dataset_name = 'marmoset_monkey'
 print('\nCreating dependent and independent variables for dataset...' + dataset_name)
 X, Y = create_x_y(dataset_name = dataset_name, dataset = net_data)
 
@@ -534,19 +538,27 @@ if dataset_name in ['marmoset_monkey','macaque_monkey']:
     X = X[idx, :]
     
     # Monte Carlo CV - toned down since we do a grid search as well.
-    cv = ShuffleSplit(n_splits=2, test_size=.3)
+    cv = ShuffleSplit(n_splits=10, test_size=.3)
     
     #rfr
     (all_folds_actual,
      all_folds_pred,
      coeffs_folds_rfr,
      all_folds_r2) = rand_forest_regr(X=X, 
-                                      Y=np.log(Y_cont), # log improves stability of predictions and hyperparams across folds
+                                      Y=np.log(Y_cont), # log seems to improve stability of predictions and hyperparams across folds
                                       param_grid=param_grid, 
-                                      cv=cv)   
+                                      cv=cv) 
+    
+    # Compute r2 on the exp transformed (IF log(Y) was fed as the dependent variable)                                   
+    r2=[]  
+    for i in range(len(all_folds_actual)): 
+        r2.append(metrics.r2_score(np.exp(all_folds_actual[i]),
+                                   np.exp(all_folds_pred[i])
+                                  )
+                 )   
                                       
-    # Plot the performance (r2) across folds as a boxplot
-    values = all_folds_r2
+    # Plot the performance (r2) across folds as a boxplot 
+    values = r2# we use the r2 computed on the exp transformed Y_pred Y_actual
     for_data_frame['values'] = values 
     for_data_frame['grouping'] = len(values)*['']  
      
@@ -588,8 +600,14 @@ if dataset_name in ['marmoset_monkey','macaque_monkey']:
     file_name = dataset_name + '_feature_importance_rfr'
 
     visualize_data_frame(df=df, filters=None, 
-                         xlabel='feature importance across folds', ylabel='R2',
+                         xlabel='feature importance across folds', 
+                         ylabel='permutation importance',
                          file_name = file_name, path_save = path_results,
                          palette = sns.color_palette('mako_r', 3)
-                        )         
-        
+                        )    
+    r2=[]  
+    for i in range(10): 
+        r2.append(metrics.r2_score(np.exp(all_folds_actual[i]),
+                                   np.exp(all_folds_pred[i])
+                                  )
+                 )     
