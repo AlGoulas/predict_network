@@ -266,7 +266,11 @@ def visualize_data_frame(df=None, filters=None,
         plt.savefig(file_to_save, format='svg')
  
 # Perform random forest regression    
-def rand_forest_regr(X=None, Y=None, param_grid=None, cv=None):
+def rand_forest_regr(X=None, Y=None, 
+                     param_grid=None, 
+                     cv=None,
+                     trans_func=None,
+                     inv_trans_func=None):
     '''
     Input
     -----
@@ -278,6 +282,13 @@ def rand_forest_regr(X=None, Y=None, param_grid=None, cv=None):
     cv, a cross validation iterator (see scikit-learn for full documentation)
     scaler, a scaler that transform features by scaling each feature to a 
         given range (see scikit-learn for full documentation).
+    trans_func, function, a transformation function to be applied to Y 
+        (e.g. logarithmic transformation np.log(Y)). NOTE: function must be 
+        invertible.
+    inv_trans_func, function the inverse function of trans_func.
+        (e.g. in the case of the logarithmic transformation np.log(Y) the
+         inverse is the exponential function np.exp(Y)). The inverse is 
+        applied to also calculate r2 in the original untransformed Y. 
     
     Output
     ------
@@ -303,8 +314,15 @@ def rand_forest_regr(X=None, Y=None, param_grid=None, cv=None):
     # Keep parameters from inner cross validation and feature importance
     coeffs_folds_rfr = None
     all_folds_r2 = []
+    all_folds_r2_orig = []
     all_folds_rf_depth = []
     all_folds_rf_max_est = [] 
+    
+    # Tranform Y if trans_func is passed as an argument
+    # Note that the function operates in single observations thus
+    # it is not necessary to apply it seperately to Y_train and Y_test
+    if trans_func is not None:
+        Y = trans_func(Y)
     
     print('\nRandom forest regression...')
     print('\nTest score (R2) across folds:')
@@ -314,21 +332,30 @@ def rand_forest_regr(X=None, Y=None, param_grid=None, cv=None):
        
         rfr = RandomForestRegressor()
         
+        # Perfrom grid search
         print('\nPerforming grid search...\n')
         grid_rfr = GridSearchCV(rfr, param_grid, cv=5)
         grid_rfr.fit(X_train, Y_train)
     
+        # Use the model with the best params to make predictions on the test
         rfr = grid_rfr.best_estimator_
-        
         rfr.fit(X_train, Y_train)
-          
+        
+        # Store r2
         r2 = rfr.score(X_test, Y_test)
         all_folds_r2.append(r2)
         
+        # Extimate Y_pred and store
         Y_pred = rfr.predict(X_test)
         all_folds_actual.append(Y_test)
         all_folds_pred.append(Y_pred)
         
+        # Calculate r2 on the original (reverse tranformed) Y 
+        all_folds_r2_orig.append(metrics.r2_score(inv_trans_func(Y_test),
+                                                  inv_trans_func(Y_pred)
+                                                 )
+                                )
+        # Keep best params
         best_params = grid_rfr.best_params_
         all_folds_rf_depth.append(best_params['max_depth'])
         all_folds_rf_max_est.append(best_params['n_estimators'])
@@ -342,6 +369,7 @@ def rand_forest_regr(X=None, Y=None, param_grid=None, cv=None):
                 format(i+1, r2, best_params['max_depth'], best_params['n_estimators'])
                 )
         
+        # Calculate feature importance on the test set
         result = permutation_importance(rfr, X_test, Y_test, n_repeats=10,
                                         random_state=42, n_jobs=2)
             
@@ -357,7 +385,7 @@ def rand_forest_regr(X=None, Y=None, param_grid=None, cv=None):
          format(np.mean(all_folds_r2), np.std(all_folds_r2))
          )
     
-    return all_folds_actual, all_folds_pred, coeffs_folds_rfr, all_folds_r2
+    return all_folds_actual, all_folds_pred, coeffs_folds_rfr, all_folds_r2, all_folds_r2_orig
             
 # Specify folder to store figures of resutls
 path_results = Path('/Users/alexandrosgoulas/Data/work-stuff/python-code/network_prediction/results')
@@ -537,28 +565,24 @@ if dataset_name in ['marmoset_monkey','macaque_monkey']:
     Y_cont = Y_cont[idx] 
     X = X[idx, :]
     
-    # Monte Carlo CV - toned down since we do a grid search as well.
+    # Monte Carlo CV - tone down nr of splits since we do a grid search
     cv = ShuffleSplit(n_splits=10, test_size=.3)
     
     #rfr
     (all_folds_actual,
      all_folds_pred,
      coeffs_folds_rfr,
-     all_folds_r2) = rand_forest_regr(X=X, 
-                                      Y=np.log(Y_cont), # log seems to improve stability of predictions and hyperparams across folds
-                                      param_grid=param_grid, 
-                                      cv=cv) 
-    
-    # Compute r2 on the exp transformed (IF log(Y) was fed as the dependent variable)                                   
-    r2=[]  
-    for i in range(len(all_folds_actual)): 
-        r2.append(metrics.r2_score(np.exp(all_folds_actual[i]),
-                                   np.exp(all_folds_pred[i])
-                                  )
-                 )   
-                                      
+     all_folds_r2,
+     all_folds_r2_orig) = rand_forest_regr(X=X, 
+                                           Y=Y_cont,
+                                           param_grid=param_grid, 
+                                           cv=cv,
+                                           trans_func=np.log,
+                                           inv_trans_func=np.exp
+                                           ) 
+                                        
     # Plot the performance (r2) across folds as a boxplot 
-    values = r2# we use the r2 computed on the exp transformed Y_pred Y_actual
+    values = all_folds_r2_orig# we use the r2 computed on the exp transformed Y_pred Y_actual
     for_data_frame['values'] = values 
     for_data_frame['grouping'] = len(values)*['']  
      
@@ -605,9 +629,4 @@ if dataset_name in ['marmoset_monkey','macaque_monkey']:
                          file_name = file_name, path_save = path_results,
                          palette = sns.color_palette('mako_r', 3)
                         )    
-    r2=[]  
-    for i in range(10): 
-        r2.append(metrics.r2_score(np.exp(all_folds_actual[i]),
-                                   np.exp(all_folds_pred[i])
-                                  )
-                 )     
+   
