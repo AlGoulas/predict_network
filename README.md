@@ -5,7 +5,7 @@ Predict missing connections in networks
 # Description
 The code builds predictive models that can estimate the existence and strength of edges in networks based on attributes of the nodes. Thus, predictions can be made for missing data, that is, connections, between pairs of nodes. In other words, the models predict the existence and significance (presence and strength) of interactions between objects, represented as edges and nodes, respectively.
 
-The dataset that is included in this repo concerns biological neural networks but the methods are applicable to any type of networks.
+The dataset that is included in this repo concerns biological neural networks but the methods are applicable to any type of network.
 
 Logistic regression is used to predict the existence of connections/edges and random forest regression for predicting the strength of connections/edges.
 
